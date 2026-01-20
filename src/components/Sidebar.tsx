@@ -21,9 +21,9 @@ export const Sidebar = () => {
     <aside className="w-full md:w-64 bg-surface border-r border-slate-200 dark:border-slate-800 flex flex-col h-full transition-colors">
       <div className="p-6">
         <h1 className="text-2xl font-black bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-          Hoardr.
+          BudgetBubble.
         </h1>
-        <p className="text-xs text-slate-400 mt-1 italic">Don't buy that latte.</p>
+        <p className="text-xs text-slate-400 mt-1 italic">Money Money Money.</p>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-4 space-y-6">

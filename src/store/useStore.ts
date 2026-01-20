@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { db, auth } from '../firebase';
 
 export type TransactionType = 'add' | 'remove';
 export type Currency = 'USD' | 'EUR' | 'AED';
@@ -9,21 +10,12 @@ export interface Transaction {
   amount: number;
   type: TransactionType;
   category: string;
-  note?: string;
-  date: string; // ISO string
-  currencySnapshot: number; // Rate at time of tx
-}
-
-export interface GroupMember {
-  id: string;
-  name: string;
-  saved: number;
-  goal: number;
-  deadline?: string;
+  date: string;
 }
 
 interface AppState {
-  // Solo State
+  // User Data
+  uid: string | null;
   saved: number;
   goal: number;
   deadline: string | null;
@@ -31,80 +23,80 @@ interface AppState {
   rates: Record<string, number>;
   categories: string[];
   history: Transaction[];
-  theme: 'light' | 'dark';
-  
-  // Group State
-  groupsMode: boolean;
-  members: GroupMember[]; // In manual mode, this is imported data
   
   // Actions
-  setTheme: (theme: 'light' | 'dark') => void;
+  setUser: (uid: string | null) => void;
+  loadData: () => Promise<void>;
+  syncToCloud: (state: Partial<AppState>) => void;
+  
   setGoal: (amount: number, date?: string) => void;
   setCurrency: (c: Currency) => void;
-  updateRates: (rates: Record<string, number>) => void;
-  addTransaction: (tx: Omit<Transaction, 'id' | 'date' | 'currencySnapshot'>) => void;
-  addCategory: (cat: string) => void;
-  removeCategory: (cat: string) => void;
-  toggleGroupsMode: () => void;
-  updateMember: (member: GroupMember) => void; // For manual sync import
+  addTransaction: (tx: Omit<Transaction, 'id' | 'date'>) => void;
 }
 
-export const useStore = create<AppState>()(
-  persist(
-    (set, get) => ({
-      saved: 0,
-      goal: 1000,
-      deadline: null,
-      currency: 'USD',
-      rates: { USD: 1, EUR: 0.92, AED: 3.67 }, // Fallbacks
-      categories: ['Salary', 'Freelance', 'Gifts', 'Investments'],
-      history: [],
-      theme: 'dark',
-      groupsMode: false,
-      members: [],
+export const useStore = create<AppState>((set, get) => ({
+  uid: null,
+  saved: 0,
+  goal: 1000,
+  deadline: null,
+  currency: 'USD',
+  rates: { USD: 1, EUR: 0.92, AED: 3.67 },
+  categories: ['Salary', 'Freelance', 'Food', 'Fun'],
+  history: [],
 
-      setTheme: (theme) => set({ theme }),
-      setGoal: (amount, date) => set({ goal: amount, deadline: date || null }),
-      setCurrency: (c) => set({ currency: c }),
-      updateRates: (rates) => set({ rates }),
-      
-      addTransaction: (tx) => set((state) => {
-        const newSaved = tx.type === 'add' 
-          ? state.saved + tx.amount 
-          : state.saved - tx.amount;
-        
-        return {
-          saved: Math.max(0, newSaved),
-          history: [
-            {
-              ...tx,
-              id: crypto.randomUUID(),
-              date: new Date().toISOString(),
-              currencySnapshot: state.rates[state.currency] || 1
-            },
-            ...state.history
-          ]
-        };
-      }),
+  setUser: (uid) => set({ uid }),
 
-      addCategory: (cat) => set((state) => ({ 
-        categories: [...state.categories, cat] 
-      })),
-      
-      removeCategory: (cat) => set((state) => ({ 
-        categories: state.categories.filter(c => c !== cat) 
-      })),
+  // 1. LOAD DATA (Runs when you log in)
+  loadData: async () => {
+    const uid = get().uid;
+    if (!uid) return;
 
-      toggleGroupsMode: () => set((state) => ({ groupsMode: !state.groupsMode })),
-      
-      updateMember: (member) => set((state) => {
-        const exists = state.members.find(m => m.id === member.id);
-        if (exists) {
-          return { members: state.members.map(m => m.id === member.id ? member : m) };
-        }
-        return { members: [...state.members, member] };
-      })
-    }),
-    { name: 'savings-tracker-storage' }
-  )
-);
+    const docRef = doc(db, 'users', uid);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      // Load existing data
+      set(docSnap.data() as Partial<AppState>);
+    } else {
+      // New user? Create default profile
+      const defaultData = {
+        saved: 0,
+        goal: 1000,
+        currency: 'USD',
+        categories: ['Salary', 'Freelance', 'Food', 'Fun'],
+        history: []
+      };
+      await setDoc(docRef, defaultData, { merge: true });
+      set(defaultData);
+    }
+  },
+
+  // 2. SYNC HELPER (Saves specific changes to cloud)
+  syncToCloud: (updates) => {
+    const uid = get().uid;
+    if (uid) {
+      const docRef = doc(db, 'users', uid);
+      setDoc(docRef, updates, { merge: true });
+    }
+  },
+
+  setGoal: (amount, date) => {
+    set({ goal: amount, deadline: date || null });
+    get().syncToCloud({ goal: amount, deadline: date || null });
+  },
+
+  setCurrency: (c) => {
+    set({ currency: c });
+    get().syncToCloud({ currency: c });
+  },
+
+  addTransaction: (tx) => {
+    const state = get();
+    const newSaved = tx.type === 'add' ? state.saved + tx.amount : state.saved - tx.amount;
+    const newTx = { ...tx, id: crypto.randomUUID(), date: new Date().toISOString() };
+    const newHistory = [newTx, ...state.history];
+
+    set({ saved: Math.max(0, newSaved), history: newHistory });
+    get().syncToCloud({ saved: Math.max(0, newSaved), history: newHistory });
+  }
+}));
