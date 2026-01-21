@@ -21,7 +21,8 @@ export interface GroupMember {
   saved: number;
   goal: number;
   currency: Currency;
-  goalTitle?: string; // NEW: Friends also have goal names
+  goalTitle?: string;
+  isGhost?: boolean; // NEW: Privacy Flag
 }
 
 interface AppState {
@@ -29,11 +30,12 @@ interface AppState {
   username: string;
   saved: number;
   goal: number;
-  goalTitle: string; // NEW: Your goal name
+  goalTitle: string;
   goalCurrency: Currency;
   deadline: string | null;
   currency: Currency;
   theme: Theme;
+  isGhost: boolean; // NEW: Your privacy setting
   categories: string[];
   history: Transaction[];
   
@@ -47,10 +49,11 @@ interface AppState {
   syncToCloud: (state: Partial<AppState>) => void;
   resetData: () => Promise<void>;
   
-  setGoal: (amount: number, date?: string, currency?: Currency, title?: string) => void; // UPDATED
+  setGoal: (amount: number, date?: string, currency?: Currency, title?: string) => void;
   setCurrency: (c: Currency) => void;
   setTheme: (t: Theme) => void;
   setUsername: (name: string) => void;
+  toggleGhostMode: () => void; // NEW
   addCategory: (cat: string) => void;
   removeCategory: (cat: string) => void;
   addTransaction: (tx: Omit<Transaction, 'id' | 'date'>) => void;
@@ -69,11 +72,12 @@ export const useStore = create<AppState>((set, get) => ({
   username: 'Budgeter',
   saved: 0,
   goal: 1000,
-  goalTitle: 'Goal', // Default
+  goalTitle: 'Goal',
   goalCurrency: 'USD',
   deadline: null,
   currency: 'USD',
   theme: 'dark',
+  isGhost: false, // Default: public
   categories: ['Salary', 'Freelance', 'Food', 'Fun'],
   history: [],
   groupsMode: false,
@@ -108,6 +112,7 @@ export const useStore = create<AppState>((set, get) => ({
         saved: data.saved || 0,
         goalTitle: data.goalTitle || 'Goal',
         theme: data.theme || 'dark',
+        isGhost: data.isGhost || false,
         categories: data.categories || ['Salary', 'Freelance', 'Food', 'Fun'],
         history: data.history || []
       } as Partial<AppState>);
@@ -123,6 +128,7 @@ export const useStore = create<AppState>((set, get) => ({
         goalCurrency: 'USD',
         currency: 'USD',
         theme: 'dark',
+        isGhost: false,
         categories: ['Salary', 'Freelance', 'Food', 'Fun'],
         history: [],
         friendIds: []
@@ -152,14 +158,14 @@ export const useStore = create<AppState>((set, get) => ({
       goalCurrency: 'USD' as Currency,
       history: [],
       deadline: null,
-      friendIds: []
+      friendIds: [],
+      isGhost: false
     };
     
     set(freshStart);
     get().syncToCloud(freshStart);
   },
 
-  // UPDATED: Now accepts Title
   setGoal: (amount, date, currency, title) => {
     const updates = { 
       goal: amount, 
@@ -169,6 +175,12 @@ export const useStore = create<AppState>((set, get) => ({
     };
     set(updates);
     get().syncToCloud(updates);
+  },
+
+  toggleGhostMode: () => {
+    const newVal = !get().isGhost;
+    set({ isGhost: newVal });
+    get().syncToCloud({ isGhost: newVal });
   },
 
   setCurrency: (c) => {
