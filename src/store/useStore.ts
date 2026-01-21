@@ -22,7 +22,6 @@ export interface GroupMember {
   goal: number;
   currency: Currency;
   goalTitle?: string;
-  isGhost?: boolean; // NEW: Privacy Flag
 }
 
 interface AppState {
@@ -35,7 +34,6 @@ interface AppState {
   deadline: string | null;
   currency: Currency;
   theme: Theme;
-  isGhost: boolean; // NEW: Your privacy setting
   categories: string[];
   history: Transaction[];
   
@@ -53,7 +51,6 @@ interface AppState {
   setCurrency: (c: Currency) => void;
   setTheme: (t: Theme) => void;
   setUsername: (name: string) => void;
-  toggleGhostMode: () => void; // NEW
   addCategory: (cat: string) => void;
   removeCategory: (cat: string) => void;
   addTransaction: (tx: Omit<Transaction, 'id' | 'date'>) => void;
@@ -63,6 +60,9 @@ interface AppState {
   removeFriendId: (id: string) => Promise<void>;
   setLiveMembers: (members: GroupMember[]) => void;
   convertAmount: (amount: number, from: Currency, to: Currency) => number;
+  
+  // NEW: Send a cheer signal to a friend
+  sendCheer: (friendId: string) => Promise<void>;
 }
 
 const RATES = { USD: 1, EUR: 0.92, AED: 3.67 };
@@ -77,7 +77,6 @@ export const useStore = create<AppState>((set, get) => ({
   deadline: null,
   currency: 'USD',
   theme: 'dark',
-  isGhost: false, // Default: public
   categories: ['Salary', 'Freelance', 'Food', 'Fun'],
   history: [],
   groupsMode: false,
@@ -112,7 +111,6 @@ export const useStore = create<AppState>((set, get) => ({
         saved: data.saved || 0,
         goalTitle: data.goalTitle || 'Goal',
         theme: data.theme || 'dark',
-        isGhost: data.isGhost || false,
         categories: data.categories || ['Salary', 'Freelance', 'Food', 'Fun'],
         history: data.history || []
       } as Partial<AppState>);
@@ -128,7 +126,6 @@ export const useStore = create<AppState>((set, get) => ({
         goalCurrency: 'USD',
         currency: 'USD',
         theme: 'dark',
-        isGhost: false,
         categories: ['Salary', 'Freelance', 'Food', 'Fun'],
         history: [],
         friendIds: []
@@ -158,8 +155,7 @@ export const useStore = create<AppState>((set, get) => ({
       goalCurrency: 'USD' as Currency,
       history: [],
       deadline: null,
-      friendIds: [],
-      isGhost: false
+      friendIds: []
     };
     
     set(freshStart);
@@ -175,12 +171,6 @@ export const useStore = create<AppState>((set, get) => ({
     };
     set(updates);
     get().syncToCloud(updates);
-  },
-
-  toggleGhostMode: () => {
-    const newVal = !get().isGhost;
-    set({ isGhost: newVal });
-    get().syncToCloud({ isGhost: newVal });
   },
 
   setCurrency: (c) => {
@@ -250,5 +240,12 @@ export const useStore = create<AppState>((set, get) => ({
 
   setLiveMembers: (members) => {
     set({ members });
+  },
+
+  // NEW: Updates the friend's document with a timestamp
+  sendCheer: async (friendId) => {
+    const docRef = doc(db, 'users', friendId);
+    // We update a field called 'latestCheer' with the current time
+    await updateDoc(docRef, { latestCheer: Date.now() });
   }
 }));

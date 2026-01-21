@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import type { GroupMember } from '../store/useStore';
 import { SavingsRing } from '../components/SavingsRing';
 import { Modal } from '../components/ui/Modal';
-import { UserPlus, Copy, Trash2, Edit2, Ghost, Users, Sword, Trophy, Sparkles, ChevronDown } from 'lucide-react';
+import { UserPlus, Copy, Trash2, Edit2, Users, Sword, Trophy, Sparkles, ChevronDown } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import confetti from 'canvas-confetti';
@@ -12,16 +12,19 @@ export const GroupDashboard = () => {
   const { 
     uid, username, setUsername, saved, goal, goalTitle,
     friendIds, members, addFriendId, removeFriendId, setLiveMembers,
-    convertAmount, currency, goalCurrency, isGhost, toggleGhostMode
+    convertAmount, currency, goalCurrency, sendCheer
   } = useStore();
 
   const [addModal, setAddModal] = useState(false);
   const [friendCodeInput, setFriendCodeInput] = useState('');
+  
+  // Name Editing State
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(username);
   
   const [viewMode, setViewMode] = useState<'versus' | 'coop'>('versus');
 
+  // 1. LISTEN TO FRIENDS (To see their progress)
   useEffect(() => {
     if (friendIds.length === 0) {
       setLiveMembers([]);
@@ -38,7 +41,6 @@ export const GroupDashboard = () => {
             goal: data.goal || 1000,
             currency: data.currency || 'USD',
             goalTitle: data.goalTitle || 'Goal',
-            isGhost: data.isGhost || false
           };
           useStore.setState(state => {
             const others = state.members.filter(m => m.id !== friendId);
@@ -49,6 +51,30 @@ export const GroupDashboard = () => {
     });
     return () => unsubscribes.forEach(unsub => unsub());
   }, [friendIds]);
+
+  // 2. LISTEN TO SELF (To receive cheers from friends!)
+  const lastCheerRef = useRef<number>(0);
+  useEffect(() => {
+    if (!uid) return;
+    const unsub = onSnapshot(doc(db, 'users', uid), (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            const serverCheer = data.latestCheer || 0;
+            // If the server timestamp is newer than what we last saw, FIRE CONFETTI
+            if (serverCheer > lastCheerRef.current && lastCheerRef.current !== 0) {
+                confetti({
+                    particleCount: 200,
+                    spread: 100,
+                    origin: { y: 0.6 },
+                    colors: ['#FFD700', '#FFA500', '#FF4500'], // Gold/Orange Celebration
+                    zIndex: 9999
+                });
+            }
+            lastCheerRef.current = serverCheer;
+        }
+    });
+    return () => unsub();
+  }, [uid]);
 
   const displaySaved = convertAmount(saved, 'USD', currency);
   const displayGoal = convertAmount(goal, goalCurrency, currency);
@@ -67,8 +93,6 @@ export const GroupDashboard = () => {
   const totalSavedCoop = displaySaved + members.reduce((acc, m) => acc + convertAmount(m.saved, 'USD', currency), 0);
   const totalGoalCoop = displayGoal + members.reduce((acc, m) => acc + convertAmount(m.goal, m.currency, currency), 0);
   
-  const showRivalAmount = rival && !rival.isGhost;
-
   const handleAddFriend = async () => {
     if (friendCodeInput.trim()) {
       await addFriendId(friendCodeInput.trim());
@@ -78,27 +102,16 @@ export const GroupDashboard = () => {
   };
 
   const handleNameUpdate = () => {
-    setUsername(tempName);
+    if (tempName.trim()) {
+        setUsername(tempName);
+    }
     setIsEditingName(false);
   };
 
-  // UPDATED: Now calculates the button position!
-  const triggerConfetti = (e: React.MouseEvent) => {
-    // Get the button's position on screen
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
-    
-    // Convert to percentage (0 to 1) for the confetti library
-    const x = (rect.left + rect.width / 2) / window.innerWidth;
-    const y = (rect.top + rect.height / 2) / window.innerHeight;
-
-    confetti({
-      particleCount: 150, // More particles
-      spread: 60,         // Tighter burst
-      startVelocity: 30,  // Faster pop
-      origin: { x, y },   // Fires exactly from the button
-      colors: ['#8b5cf6', '#a78bfa', '#c4b5fd'],
-      zIndex: 9999
-    });
+  // Sends the cheer signal to the friend
+  const handleCheer = async (friendId: string) => {
+    await sendCheer(friendId);
+    alert("Cheer sent! They will see confetti if they are online."); 
   };
 
   return (
@@ -113,36 +126,6 @@ export const GroupDashboard = () => {
              >
                 {viewMode === 'versus' ? <Sword size={14} className="text-red-400"/> : <Users size={14} className="text-green-400"/>}
                 <span className="text-slate-600 dark:text-slate-300 uppercase tracking-wide">{viewMode === 'versus' ? 'Versus' : 'Team Pot'}</span>
-             </button>
-           </div>
-           
-           <div className="flex items-center gap-2 text-slate-400 text-sm mt-1">
-             {isEditingName ? (
-               <div className="flex items-center gap-2">
-                 <input 
-                   autoFocus
-                   className="bg-white dark:bg-slate-800 border border-primary rounded px-2 py-1 text-slate-800 dark:text-white outline-none"
-                   value={tempName}
-                   onChange={e => setTempName(e.target.value)}
-                   onKeyDown={e => e.key === 'Enter' && handleNameUpdate()}
-                 />
-                 <button onClick={handleNameUpdate} className="text-primary font-bold text-xs">SAVE</button>
-               </div>
-             ) : (
-               <div className="flex items-center gap-2 group">
-                 <span>Playing as <strong className="text-slate-600 dark:text-slate-200">{username}</strong></span>
-                 <button onClick={() => setIsEditingName(true)} className="opacity-0 group-hover:opacity-100 transition-opacity">
-                   <Edit2 size={12} />
-                 </button>
-               </div>
-             )}
-             <span className="text-slate-300">•</span>
-             <button 
-                onClick={toggleGhostMode}
-                className={`flex items-center gap-1 text-xs font-bold transition-colors ${isGhost ? 'text-purple-400' : 'text-slate-400 hover:text-slate-500'}`}
-                title="Ghost Mode: Hides your money amounts from friends"
-             >
-               <Ghost size={12} /> {isGhost ? 'Ghost On' : 'Ghost Off'}
              </button>
            </div>
         </div>
@@ -190,10 +173,29 @@ export const GroupDashboard = () => {
           // --- VERSUS VIEW ---
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 h-full"> 
             
-            {/* CARD 1: YOU */}
-            <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-200 dark:border-slate-700 flex flex-col items-center shadow-sm h-full relative">
+            {/* CARD 1: YOU (EDITABLE NAME) */}
+            <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-200 dark:border-slate-700 flex flex-col items-center shadow-sm h-full relative group">
               <div className="mb-6 w-full text-center relative h-8 flex items-center justify-center">
-                <h3 className="text-xl font-bold text-slate-400 uppercase tracking-widest">You</h3>
+                 {isEditingName ? (
+                    <div className="flex items-center gap-2">
+                        <input 
+                            autoFocus
+                            className="bg-slate-100 dark:bg-slate-900 border-b-2 border-primary text-center font-bold text-xl text-slate-800 dark:text-white outline-none w-32"
+                            value={tempName}
+                            onChange={e => setTempName(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleNameUpdate()}
+                            onBlur={handleNameUpdate}
+                        />
+                    </div>
+                 ) : (
+                    <div 
+                        className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 px-3 py-1 rounded-lg transition-colors"
+                        onClick={() => { setTempName(username); setIsEditingName(true); }}
+                    >
+                        <h3 className="text-xl font-bold text-slate-400 uppercase tracking-widest">{username}</h3>
+                        <Edit2 size={14} className="text-slate-300" />
+                    </div>
+                 )}
               </div>
               <div className="flex-1 flex items-center justify-center">
                 <SavingsRing customSaved={displaySaved} customGoal={displayGoal} customTitle={goalTitle} />
@@ -234,15 +236,10 @@ export const GroupDashboard = () => {
                   
                   <div className="flex-1 flex items-center justify-center relative">
                     <SavingsRing 
-                      customSaved={showRivalAmount ? rivalSavedDisplay : undefined} 
-                      customGoal={showRivalAmount ? rivalGoalDisplay : undefined} 
+                      customSaved={rivalSavedDisplay} 
+                      customGoal={rivalGoalDisplay} 
                       customTitle={rival.goalTitle || 'Goal'} 
                     />
-                    {rival.isGhost && (
-                      <div className="absolute top-0 right-0 bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded text-[10px] font-bold text-slate-500 flex items-center gap-1">
-                        <Ghost size={10} /> Hidden
-                      </div>
-                    )}
                   </div>
                   
                   <div className="w-full mt-8 text-center h-20 flex flex-col justify-end space-y-2">
@@ -252,9 +249,8 @@ export const GroupDashboard = () => {
                           <Trophy size={16} className="text-red-500"/>
                           Trailing by {Math.abs(myPercent - rivalPercent).toFixed(1)}%
                         </div>
-                        {/* UPDATED BUTTON: Passes the click event (e) to triggerConfetti */}
-                        <button onClick={(e) => triggerConfetti(e)} className="text-xs text-slate-400 hover:text-primary transition-colors flex items-center justify-center gap-1 w-full">
-                          <Sparkles size={12}/> Cheer them on
+                        <button onClick={() => handleCheer(rival.id)} className="text-xs text-slate-400 hover:text-primary transition-colors flex items-center justify-center gap-1 w-full">
+                          <Sparkles size={12}/> Cheer them on (Send Confetti)
                         </button>
                       </>
                     ) : (
