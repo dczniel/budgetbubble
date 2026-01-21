@@ -5,13 +5,13 @@ import { SavingsRing } from '../components/SavingsRing';
 import { Modal } from '../components/ui/Modal';
 import { getSnarkyMessage } from '../utils/snark';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
-import { Settings, Wallet, MinusCircle, Calendar, AlertCircle } from 'lucide-react';
+import { Settings, Wallet, MinusCircle, Calendar, Trash2, Plus, Type } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 
 export const SoloDashboard = () => {
   const { 
-    goal, goalCurrency, deadline, currency, categories, history,
-    addTransaction, setGoal, setCurrency, convertAmount 
+    goal, goalTitle, goalCurrency, deadline, currency, categories, history,
+    addTransaction, setGoal, setCurrency, convertAmount, addCategory, removeCategory 
   } = useStore();
 
   const [txModal, setTxModal] = useState<{ open: boolean, type: TransactionType }>({ open: false, type: 'add' });
@@ -26,41 +26,41 @@ export const SoloDashboard = () => {
   const [newGoal, setNewGoal] = useState(goal.toString());
   const [newDate, setNewDate] = useState(deadline || '');
   const [newGoalCurrency, setNewGoalCurrency] = useState<Currency>(goalCurrency);
+  const [newGoalTitle, setNewGoalTitle] = useState(goalTitle);
+  
+  // New Category State
+  const [newCatInput, setNewCatInput] = useState('');
 
   // --- MATH ---
   const displayGoal = convertAmount(goal, goalCurrency, currency);
-  // Assume saved is stored in USD, so we convert USD -> View Currency
   const displaySaved = convertAmount(useStore(s => s.saved), 'USD', currency);
-  
   const remaining = Math.max(0, displayGoal - displaySaved);
-  
   const daysLeft = deadline ? differenceInDays(new Date(deadline), new Date()) : 0;
   const dailyPace = daysLeft > 0 ? remaining / daysLeft : 0;
 
   const handleTransaction = () => {
     const val = parseFloat(amount);
     if (!val) return;
-    
-    // Convert input amount (View Currency) -> USD (Base Storage)
     const amountInUSD = convertAmount(val, currency, 'USD');
-    
-    addTransaction({
-      amount: amountInUSD,
-      type: txModal.type,
-      category,
-    });
-    
+    addTransaction({ amount: amountInUSD, type: txModal.type, category });
     setSnark(getSnarkyMessage(txModal.type));
     setTxModal({ ...txModal, open: false });
     setAmount('');
   };
 
   const handleGoalUpdate = () => {
-    setGoal(parseFloat(newGoal), newDate, newGoalCurrency);
+    setGoal(parseFloat(newGoal), newDate, newGoalCurrency, newGoalTitle);
     setGoalModal(false);
   };
 
-  // Chart Data
+  const handleAddCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newCatInput.trim()) {
+      addCategory(newCatInput.trim());
+      setNewCatInput('');
+    }
+  };
+
   const chartData = categories.map(cat => ({
     name: cat,
     value: history.filter(h => h.category === cat && h.type === 'add').reduce((acc, curr) => acc + curr.amount, 0)
@@ -78,7 +78,6 @@ export const SoloDashboard = () => {
         </div>
         
         <div className="flex items-center gap-2">
-          {/* Currency Pill */}
           <div className="flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full p-1 shadow-sm">
             {(['USD', 'EUR', 'AED'] as const).map(c => (
               <button
@@ -101,9 +100,10 @@ export const SoloDashboard = () => {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Main Centerpiece */}
+        {/* CENTER COLUMN */}
         <div className="lg:col-span-7 flex flex-col items-center">
-          <SavingsRing customSaved={displaySaved} customGoal={displayGoal} />
+          {/* Ring shows the custom Title */}
+          <SavingsRing customSaved={displaySaved} customGoal={displayGoal} customTitle={goalTitle} />
           
           <div className="flex gap-4 mt-8 w-full max-w-sm">
             <button 
@@ -121,9 +121,8 @@ export const SoloDashboard = () => {
           </div>
         </div>
 
-        {/* Stats Panel */}
+        {/* RIGHT COLUMN */}
         <div className="lg:col-span-5 space-y-6">
-          
           {/* Remaining Card */}
           <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
              <div className="flex justify-between items-start mb-2">
@@ -140,35 +139,49 @@ export const SoloDashboard = () => {
              )}
           </div>
 
-          {/* Pie Chart */}
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-             <h3 className="text-sm font-bold text-slate-400 uppercase mb-4">Breakdown</h3>
-             {/* CRITICAL FIX: Fixed height prevents crash */}
-             <div className="h-[200px] w-full min-w-0 relative">
-               <ResponsiveContainer width="100%" height="100%">
-                 <PieChart>
-                   <Pie
-                     data={chartData}
-                     innerRadius={60}
-                     outerRadius={80}
-                     paddingAngle={5}
-                     dataKey="value"
-                     stroke="none"
-                   >
-                     {chartData.map((entry, index) => (
-                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                     ))}
-                   </Pie>
-                   <RechartsTooltip 
-                     contentStyle={{ backgroundColor: '#1e293b', borderRadius: '8px', border: 'none', color: '#fff' }}
-                     itemStyle={{ color: '#fff' }}
+          {/* Breakdown & Categories Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+             {/* Chart */}
+             <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+                <h3 className="text-sm font-bold text-slate-400 uppercase mb-4">Breakdown</h3>
+                <div className="h-[120px] w-full min-w-0 relative">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={chartData} innerRadius={35} outerRadius={50} paddingAngle={5} dataKey="value" stroke="none">
+                        {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                      </Pie>
+                      <RechartsTooltip contentStyle={{ backgroundColor: '#1e293b', borderRadius: '8px', border: 'none', color: '#fff' }} itemStyle={{ color: '#fff' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+             </div>
+
+             {/* NEW: Categories Card */}
+             <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col">
+                <h3 className="text-sm font-bold text-slate-400 uppercase mb-4">Sources</h3>
+                <div className="flex-1 overflow-y-auto max-h-[100px] space-y-2 custom-scrollbar pr-1">
+                   {categories.map(cat => (
+                     <div key={cat} className="group flex justify-between items-center bg-slate-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg">
+                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{cat}</span>
+                        <button onClick={() => removeCategory(cat)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Trash2 size={12} />
+                        </button>
+                     </div>
+                   ))}
+                </div>
+                <form onSubmit={handleAddCategory} className="mt-3 relative">
+                   <input 
+                     className="w-full bg-slate-50 dark:bg-slate-900 border border-transparent focus:border-primary rounded-lg pl-8 pr-3 py-2 text-xs outline-none text-slate-700 dark:text-white"
+                     placeholder="Add..."
+                     value={newCatInput}
+                     onChange={e => setNewCatInput(e.target.value)}
                    />
-                 </PieChart>
-               </ResponsiveContainer>
+                   <Plus size={14} className="absolute left-2.5 top-2 text-slate-400" />
+                </form>
              </div>
           </div>
 
-          {/* History */}
+          {/* Timeline */}
           <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex-1 min-h-[300px]">
             <h3 className="text-sm font-bold text-slate-400 uppercase mb-4">Timeline</h3>
             <div className="space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
@@ -189,12 +202,7 @@ export const SoloDashboard = () => {
         </div>
       </div>
 
-      {/* Transactions Modal */}
-      <Modal 
-        isOpen={txModal.open} 
-        onClose={() => setTxModal({ ...txModal, open: false })} 
-        title={txModal.type === 'add' ? 'Stash Cash' : 'Withdraw Funds'}
-      >
+      <Modal isOpen={txModal.open} onClose={() => setTxModal({ ...txModal, open: false })} title={txModal.type === 'add' ? 'Stash Cash' : 'Withdraw Funds'}>
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Amount ({currency})</label>
@@ -228,9 +236,22 @@ export const SoloDashboard = () => {
         </div>
       </Modal>
 
-      {/* Goal Modal */}
       <Modal isOpen={goalModal} onClose={() => setGoalModal(false)} title="Target Settings">
         <div className="space-y-4">
+           <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Goal Name</label>
+              <div className="relative">
+                <input 
+                  type="text" 
+                  value={newGoalTitle}
+                  onChange={e => setNewGoalTitle(e.target.value)}
+                  placeholder="e.g. New Laptop"
+                  className="w-full p-3 pl-10 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-white font-bold"
+                />
+                <Type className="absolute left-3 top-3.5 text-slate-400 pointer-events-none" size={18} />
+              </div>
+           </div>
+
            <div className="grid grid-cols-3 gap-2">
              <div className="col-span-2">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Goal Amount</label>
@@ -268,13 +289,6 @@ export const SoloDashboard = () => {
             </div>
            </div>
            
-           <div className="bg-slate-100 dark:bg-slate-700 p-3 rounded-lg flex gap-3 items-start">
-              <AlertCircle size={18} className="text-primary shrink-0 mt-0.5" />
-              <p className="text-xs text-slate-500 dark:text-slate-300">
-                Goals are saved in {newGoalCurrency}. If you view the dashboard in another currency, the goal amount will auto-convert.
-              </p>
-           </div>
-
            <button 
             onClick={handleGoalUpdate}
             className="w-full py-3 bg-primary hover:bg-primary-dark text-white font-bold rounded-lg mt-4"

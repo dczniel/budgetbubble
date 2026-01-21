@@ -1,23 +1,11 @@
 import { useStore } from '../store/useStore';
-import { User, Users, Plus, Trash2, Moon, Sun, LogOut, RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { User, Users, Moon, Sun, LogOut, RefreshCw } from 'lucide-react';
 
 export const Sidebar = () => {
   const { 
-    groupsMode, setGroupsMode, categories, addCategory, 
-    removeCategory, theme, setTheme, resetData, setUser
+    groupsMode, setGroupsMode, theme, setTheme, resetData, setUser
   } = useStore();
   
-  const [newCat, setNewCat] = useState('');
-
-  const handleAddCat = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newCat) {
-      addCategory(newCat);
-      setNewCat('');
-    }
-  };
-
   const handleReset = async () => {
     if (confirm("ARE YOU SURE? \nThis will delete ALL history and reset your progress to zero.\nThis cannot be undone.")) {
       await resetData();
@@ -34,58 +22,20 @@ export const Sidebar = () => {
         <p className="text-xs text-slate-400 font-medium">Money Money Money.</p>
       </div>
 
-      <nav className="flex-1 px-4 space-y-8">
-        {/* Mode Switcher */}
-        <div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">Mode</p>
-          <div className="space-y-1">
-            <button 
-              onClick={() => setGroupsMode(false)} // Explicitly set to Solo
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${!groupsMode ? 'bg-primary/10 text-primary font-bold' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-            >
-              <User size={18} /> Solo
-            </button>
-            <button 
-              onClick={() => setGroupsMode(true)} // Explicitly set to Groups
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${groupsMode ? 'bg-primary/10 text-primary font-bold' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-            >
-              <Users size={18} /> Groups
-            </button>
-          </div>
-        </div>
-
-        {/* Sources/Categories */}
-        <div>
-          <div className="flex justify-between items-center mb-3 px-2">
-             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Sources</p>
-             <button onClick={() => document.getElementById('cat-input')?.focus()} className="text-primary hover:text-primary-dark">
-               <Plus size={16} />
-             </button>
-          </div>
-          <div className="space-y-1">
-            {categories.map(cat => (
-              <div key={cat} className="group flex justify-between items-center px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
-                <span>{cat}</span>
-                <button 
-                  onClick={() => removeCategory(cat)}
-                  className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-            <form onSubmit={handleAddCat} className="mt-2">
-              <input 
-                id="cat-input"
-                type="text" 
-                placeholder="+ Add new..." 
-                value={newCat}
-                onChange={e => setNewCat(e.target.value)}
-                className="w-full bg-transparent px-3 py-2 text-sm outline-none text-slate-600 dark:text-slate-300 placeholder-slate-400 focus:bg-slate-100 dark:focus:bg-slate-800 rounded-lg"
-              />
-            </form>
-          </div>
-        </div>
+      <nav className="flex-1 px-4 space-y-2">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-2">Mode</p>
+        <button 
+          onClick={() => setGroupsMode(false)}
+          className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${!groupsMode ? 'bg-white dark:bg-slate-800 text-primary font-bold shadow-sm' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+        >
+          <User size={18} /> Solo
+        </button>
+        <button 
+          onClick={() => setGroupsMode(true)}
+          className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${groupsMode ? 'bg-white dark:bg-slate-800 text-primary font-bold shadow-sm' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+        >
+          <Users size={18} /> Groups
+        </button>
       </nav>
 
       {/* Footer Controls */}

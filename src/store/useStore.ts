@@ -21,14 +21,15 @@ export interface GroupMember {
   saved: number;
   goal: number;
   currency: Currency;
+  goalTitle?: string; // NEW: Friends also have goal names
 }
 
 interface AppState {
-  // User Data
   uid: string | null;
   username: string;
   saved: number;
   goal: number;
+  goalTitle: string; // NEW: Your goal name
   goalCurrency: Currency;
   deadline: string | null;
   currency: Currency;
@@ -36,10 +37,9 @@ interface AppState {
   categories: string[];
   history: Transaction[];
   
-  // Friend Data
   friendIds: string[];
   members: GroupMember[];
-  groupsMode: boolean; // <--- This tracks which screen you are on
+  groupsMode: boolean;
 
   // Actions
   setUser: (uid: string | null) => void;
@@ -47,18 +47,15 @@ interface AppState {
   syncToCloud: (state: Partial<AppState>) => void;
   resetData: () => Promise<void>;
   
-  setGoal: (amount: number, date?: string, currency?: Currency) => void;
+  setGoal: (amount: number, date?: string, currency?: Currency, title?: string) => void; // UPDATED
   setCurrency: (c: Currency) => void;
   setTheme: (t: Theme) => void;
   setUsername: (name: string) => void;
   addCategory: (cat: string) => void;
   removeCategory: (cat: string) => void;
   addTransaction: (tx: Omit<Transaction, 'id' | 'date'>) => void;
-  
-  // Navigation Action
-  setGroupsMode: (isGroup: boolean) => void; // <--- THE NEW FUNCTION
+  setGroupsMode: (isGroup: boolean) => void;
 
-  // Friend Actions
   addFriendId: (id: string) => Promise<void>;
   removeFriendId: (id: string) => Promise<void>;
   setLiveMembers: (members: GroupMember[]) => void;
@@ -72,6 +69,7 @@ export const useStore = create<AppState>((set, get) => ({
   username: 'Budgeter',
   saved: 0,
   goal: 1000,
+  goalTitle: 'Goal', // Default
   goalCurrency: 'USD',
   deadline: null,
   currency: 'USD',
@@ -84,8 +82,7 @@ export const useStore = create<AppState>((set, get) => ({
   members: [],
 
   setUser: (uid) => set({ uid }),
-
-  setGroupsMode: (isGroup) => set({ groupsMode: isGroup }), // <--- Simple and reliable
+  setGroupsMode: (isGroup) => set({ groupsMode: isGroup }),
 
   convertAmount: (amount, from, to) => {
     const fromRate = RATES[from] || 1;
@@ -109,6 +106,7 @@ export const useStore = create<AppState>((set, get) => ({
         friendIds: data.friendIds || [], 
         username: data.username || 'Budgeter',
         saved: data.saved || 0,
+        goalTitle: data.goalTitle || 'Goal',
         theme: data.theme || 'dark',
         categories: data.categories || ['Salary', 'Freelance', 'Food', 'Fun'],
         history: data.history || []
@@ -121,6 +119,7 @@ export const useStore = create<AppState>((set, get) => ({
         username: 'Budgeter',
         saved: 0,
         goal: 1000,
+        goalTitle: 'Goal',
         goalCurrency: 'USD',
         currency: 'USD',
         theme: 'dark',
@@ -137,7 +136,6 @@ export const useStore = create<AppState>((set, get) => ({
     const uid = get().uid;
     if (uid) {
       const docRef = doc(db, 'users', uid);
-      // Don't save 'members' or 'groupsMode' to cloud (groupsMode is a local UI state)
       const { members, groupsMode, ...cleanUpdates } = updates as any;
       setDoc(docRef, cleanUpdates, { merge: true });
     }
@@ -150,6 +148,7 @@ export const useStore = create<AppState>((set, get) => ({
     const freshStart = {
       saved: 0,
       goal: 1000,
+      goalTitle: 'Goal',
       goalCurrency: 'USD' as Currency,
       history: [],
       deadline: null,
@@ -160,11 +159,13 @@ export const useStore = create<AppState>((set, get) => ({
     get().syncToCloud(freshStart);
   },
 
-  setGoal: (amount, date, currency) => {
+  // UPDATED: Now accepts Title
+  setGoal: (amount, date, currency, title) => {
     const updates = { 
       goal: amount, 
       deadline: date || null,
-      goalCurrency: currency || get().currency 
+      goalCurrency: currency || get().currency,
+      goalTitle: title || 'Goal'
     };
     set(updates);
     get().syncToCloud(updates);
