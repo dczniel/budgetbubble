@@ -1,107 +1,119 @@
 import { useStore } from '../store/useStore';
-import { Plus, Trash2, Users, User, Sun, Moon } from 'lucide-react';
+import { User, Users, Plus, Trash2, Moon, Sun, LogOut, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
-import { Modal } from './ui/Modal';
-import clsx from 'clsx';
 
 export const Sidebar = () => {
-  const { categories, addCategory, removeCategory, theme, setTheme, groupsMode, toggleGroupsMode } = useStore();
-  const [isCatModalOpen, setIsCatModalOpen] = useState(false);
+  const { 
+    groupsMode, setGroupsMode, categories, addCategory, 
+    removeCategory, theme, setTheme, resetData, setUser
+  } = useStore();
+  
   const [newCat, setNewCat] = useState('');
 
-  const handleAddCat = () => {
-    if (newCat.trim()) {
+  const handleAddCat = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newCat) {
       addCategory(newCat);
       setNewCat('');
-      setIsCatModalOpen(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (confirm("ARE YOU SURE? \nThis will delete ALL history and reset your progress to zero.\nThis cannot be undone.")) {
+      await resetData();
+      alert("Data wiped. Clean slate!");
     }
   };
 
   return (
-    <aside className="w-full md:w-64 bg-surface border-r border-slate-200 dark:border-slate-800 flex flex-col h-full transition-colors">
+    <aside className="w-64 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col transition-colors duration-300">
       <div className="p-6">
-        <h1 className="text-2xl font-black bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
+        <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 mb-1">
           BudgetBubble.
         </h1>
-        <p className="text-xs text-slate-400 mt-1 italic">Money Money Money.</p>
+        <p className="text-xs text-slate-400 font-medium">Money Money Money.</p>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-4 space-y-6">
-        {/* Mode Switch */}
+      <nav className="flex-1 px-4 space-y-8">
+        {/* Mode Switcher */}
         <div>
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">Mode</h3>
-          <button 
-            onClick={toggleGroupsMode}
-            className={clsx(
-              "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-              !groupsMode ? "bg-primary/10 text-primary" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-            )}
-          >
-            <User size={18} /> Solo
-          </button>
-          <button 
-            onClick={toggleGroupsMode}
-            className={clsx(
-              "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors mt-1",
-              groupsMode ? "bg-primary/10 text-primary" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-            )}
-          >
-            <Users size={18} /> Groups
-          </button>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">Mode</p>
+          <div className="space-y-1">
+            <button 
+              onClick={() => setGroupsMode(false)} // Explicitly set to Solo
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${!groupsMode ? 'bg-primary/10 text-primary font-bold' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+            >
+              <User size={18} /> Solo
+            </button>
+            <button 
+              onClick={() => setGroupsMode(true)} // Explicitly set to Groups
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${groupsMode ? 'bg-primary/10 text-primary font-bold' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+            >
+              <Users size={18} /> Groups
+            </button>
+          </div>
         </div>
 
-        {/* Categories */}
+        {/* Sources/Categories */}
         <div>
-          <div className="flex items-center justify-between px-2 mb-3">
-             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Sources</h3>
-             <button onClick={() => setIsCatModalOpen(true)} className="text-primary hover:text-primary-dark">
+          <div className="flex justify-between items-center mb-3 px-2">
+             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Sources</p>
+             <button onClick={() => document.getElementById('cat-input')?.focus()} className="text-primary hover:text-primary-dark">
                <Plus size={16} />
              </button>
           </div>
-          <div className="space-y-1 max-h-[300px] overflow-y-auto custom-scrollbar">
+          <div className="space-y-1">
             {categories.map(cat => (
-              <div key={cat} className="group flex items-center justify-between px-3 py-2 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
-                <span className="truncate">{cat}</span>
+              <div key={cat} className="group flex justify-between items-center px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+                <span>{cat}</span>
                 <button 
-                  onClick={(e) => { e.stopPropagation(); removeCategory(cat); }}
-                  className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-500 transition-opacity"
+                  onClick={() => removeCategory(cat)}
+                  className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"
                 >
                   <Trash2 size={14} />
                 </button>
               </div>
             ))}
+            <form onSubmit={handleAddCat} className="mt-2">
+              <input 
+                id="cat-input"
+                type="text" 
+                placeholder="+ Add new..." 
+                value={newCat}
+                onChange={e => setNewCat(e.target.value)}
+                className="w-full bg-transparent px-3 py-2 text-sm outline-none text-slate-600 dark:text-slate-300 placeholder-slate-400 focus:bg-slate-100 dark:focus:bg-slate-800 rounded-lg"
+              />
+            </form>
           </div>
         </div>
       </nav>
 
-      {/* Footer / Theme */}
-      <div className="p-4 border-t border-slate-200 dark:border-slate-800">
+      {/* Footer Controls */}
+      <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
         <button 
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className="flex items-center gap-3 text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors"
         >
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
         </button>
-      </div>
+        
+        <button 
+          onClick={handleReset}
+          className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
+        >
+          <RefreshCw size={18} />
+          Reset Data
+        </button>
 
-      <Modal isOpen={isCatModalOpen} onClose={() => setIsCatModalOpen(false)} title="New Category">
-        <div className="space-y-4">
-          <input 
-            value={newCat} 
-            onChange={(e) => setNewCat(e.target.value)}
-            placeholder="e.g., Side Hustle"
-            className="w-full p-3 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-primary"
-            autoFocus
-          />
-          <button 
-            onClick={handleAddCat}
-            className="w-full py-3 bg-primary hover:bg-primary-dark text-white font-bold rounded-lg transition-colors"
-          >
-            Create
-          </button>
-        </div>
-      </Modal>
+        <button 
+          onClick={() => setUser(null)}
+          className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+        >
+          <LogOut size={18} />
+          Log Out
+        </button>
+      </div>
     </aside>
   );
 };

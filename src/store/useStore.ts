@@ -1,9 +1,11 @@
 import { create } from 'zustand';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { db } from '../firebase';
 
+// --- TYPES ---
 export type TransactionType = 'add' | 'remove';
 export type Currency = 'USD' | 'EUR' | 'AED';
+export type Theme = 'light' | 'dark';
 
 export interface Transaction {
   id: string;
@@ -13,40 +15,86 @@ export interface Transaction {
   date: string;
 }
 
+export interface GroupMember {
+  id: string;
+  username: string;
+  saved: number;
+  goal: number;
+  currency: Currency;
+}
+
 interface AppState {
   // User Data
   uid: string | null;
+  username: string;
   saved: number;
   goal: number;
+  goalCurrency: Currency;
   deadline: string | null;
   currency: Currency;
-  rates: Record<string, number>;
+  theme: Theme;
   categories: string[];
   history: Transaction[];
   
+  // Friend Data
+  friendIds: string[];
+  members: GroupMember[];
+  groupsMode: boolean; // <--- This tracks which screen you are on
+
   // Actions
   setUser: (uid: string | null) => void;
   loadData: () => Promise<void>;
   syncToCloud: (state: Partial<AppState>) => void;
+  resetData: () => Promise<void>;
   
-  setGoal: (amount: number, date?: string) => void;
+  setGoal: (amount: number, date?: string, currency?: Currency) => void;
   setCurrency: (c: Currency) => void;
+  setTheme: (t: Theme) => void;
+  setUsername: (name: string) => void;
+  addCategory: (cat: string) => void;
+  removeCategory: (cat: string) => void;
   addTransaction: (tx: Omit<Transaction, 'id' | 'date'>) => void;
+  
+  // Navigation Action
+  setGroupsMode: (isGroup: boolean) => void; // <--- THE NEW FUNCTION
+
+  // Friend Actions
+  addFriendId: (id: string) => Promise<void>;
+  removeFriendId: (id: string) => Promise<void>;
+  setLiveMembers: (members: GroupMember[]) => void;
+  convertAmount: (amount: number, from: Currency, to: Currency) => number;
 }
+
+const RATES = { USD: 1, EUR: 0.92, AED: 3.67 };
 
 export const useStore = create<AppState>((set, get) => ({
   uid: null,
+  username: 'Budgeter',
   saved: 0,
   goal: 1000,
+  goalCurrency: 'USD',
   deadline: null,
   currency: 'USD',
-  rates: { USD: 1, EUR: 0.92, AED: 3.67 },
+  theme: 'dark',
   categories: ['Salary', 'Freelance', 'Food', 'Fun'],
   history: [],
+  groupsMode: false,
+  
+  friendIds: [],
+  members: [],
 
   setUser: (uid) => set({ uid }),
 
-  // 1. LOAD DATA (Runs when you log in)
+  setGroupsMode: (isGroup) => set({ groupsMode: isGroup }), // <--- Simple and reliable
+
+  convertAmount: (amount, from, to) => {
+    const fromRate = RATES[from] || 1;
+    const toRate = RATES[to] || 1;
+    if (from === to) return amount;
+    const inUSD = amount / fromRate;
+    return inUSD * toRate;
+  },
+
   loadData: async () => {
     const uid = get().uid;
     if (!uid) return;
@@ -55,39 +103,104 @@ export const useStore = create<AppState>((set, get) => ({
     const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {
-      // Load existing data
-      set(docSnap.data() as Partial<AppState>);
+      const data = docSnap.data();
+      set({
+        ...data,
+        friendIds: data.friendIds || [], 
+        username: data.username || 'Budgeter',
+        saved: data.saved || 0,
+        theme: data.theme || 'dark',
+        categories: data.categories || ['Salary', 'Freelance', 'Food', 'Fun'],
+        history: data.history || []
+      } as Partial<AppState>);
+
+      if (data.theme === 'dark') document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
     } else {
-      // New user? Create default profile
       const defaultData = {
+        username: 'Budgeter',
         saved: 0,
         goal: 1000,
+        goalCurrency: 'USD',
         currency: 'USD',
+        theme: 'dark',
         categories: ['Salary', 'Freelance', 'Food', 'Fun'],
-        history: []
+        history: [],
+        friendIds: []
       };
       await setDoc(docRef, defaultData, { merge: true });
-      set(defaultData);
+      set(defaultData as any);
     }
   },
 
-  // 2. SYNC HELPER (Saves specific changes to cloud)
   syncToCloud: (updates) => {
     const uid = get().uid;
     if (uid) {
       const docRef = doc(db, 'users', uid);
-      setDoc(docRef, updates, { merge: true });
+      // Don't save 'members' or 'groupsMode' to cloud (groupsMode is a local UI state)
+      const { members, groupsMode, ...cleanUpdates } = updates as any;
+      setDoc(docRef, cleanUpdates, { merge: true });
     }
   },
 
-  setGoal: (amount, date) => {
-    set({ goal: amount, deadline: date || null });
-    get().syncToCloud({ goal: amount, deadline: date || null });
+  resetData: async () => {
+    const uid = get().uid;
+    if (!uid) return;
+    
+    const freshStart = {
+      saved: 0,
+      goal: 1000,
+      goalCurrency: 'USD' as Currency,
+      history: [],
+      deadline: null,
+      friendIds: []
+    };
+    
+    set(freshStart);
+    get().syncToCloud(freshStart);
+  },
+
+  setGoal: (amount, date, currency) => {
+    const updates = { 
+      goal: amount, 
+      deadline: date || null,
+      goalCurrency: currency || get().currency 
+    };
+    set(updates);
+    get().syncToCloud(updates);
   },
 
   setCurrency: (c) => {
     set({ currency: c });
     get().syncToCloud({ currency: c });
+  },
+  
+  setUsername: (name) => {
+    set({ username: name });
+    get().syncToCloud({ username: name });
+  },
+
+  setTheme: (t) => {
+    set({ theme: t });
+    if (t === 'dark') document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+    get().syncToCloud({ theme: t });
+  },
+
+  addCategory: (cat) => {
+    const { categories } = get();
+    if (!categories.includes(cat)) {
+      const newCats = [...categories, cat];
+      set({ categories: newCats });
+      get().syncToCloud({ categories: newCats });
+    }
+  },
+
+  removeCategory: (cat) => {
+    const { categories } = get();
+    const newCats = categories.filter(c => c !== cat);
+    set({ categories: newCats });
+    get().syncToCloud({ categories: newCats });
   },
 
   addTransaction: (tx) => {
@@ -98,5 +211,31 @@ export const useStore = create<AppState>((set, get) => ({
 
     set({ saved: Math.max(0, newSaved), history: newHistory });
     get().syncToCloud({ saved: Math.max(0, newSaved), history: newHistory });
+  },
+
+  addFriendId: async (friendId) => {
+    const { uid, friendIds } = get();
+    if (!uid) return;
+    if (friendIds.includes(friendId)) return;
+    if (friendId === uid) return;
+
+    const newIds = [...friendIds, friendId];
+    set({ friendIds: newIds });
+    const docRef = doc(db, 'users', uid);
+    await updateDoc(docRef, { friendIds: arrayUnion(friendId) });
+  },
+
+  removeFriendId: async (friendId) => {
+    const { uid, friendIds } = get();
+    if (!uid) return;
+    
+    const newIds = friendIds.filter(id => id !== friendId);
+    set({ friendIds: newIds });
+    const docRef = doc(db, 'users', uid);
+    await updateDoc(docRef, { friendIds: arrayRemove(friendId) });
+  },
+
+  setLiveMembers: (members) => {
+    set({ members });
   }
 }));
